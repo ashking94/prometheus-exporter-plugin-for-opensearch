@@ -19,8 +19,8 @@ package org.opensearch.action;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.http.HttpHost;
-import org.apache.http.util.EntityUtils;
+import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.compuscene.metrics.prometheus.PrometheusSettings;
@@ -51,9 +51,14 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Transport action class for Prometheus Exporter plugin.
- *
+ * <p>
  * It performs several requests within the cluster to gather "cluster health", "local nodes info", "nodes stats", "indices stats"
  * and "cluster state" (i.e. cluster settings) info. Some of those requests are optional depending on plugin
  * settings.
@@ -69,11 +74,12 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
 
     /**
      * A constructor.
-     * @param settings Settings
-     * @param client Cluster client
+     *
+     * @param settings         Settings
+     * @param client           Cluster client
      * @param transportService Transport service
-     * @param actionFilters Action filters
-     * @param clusterSettings Cluster settings
+     * @param actionFilters    Action filters
+     * @param clusterSettings  Cluster settings
      */
     @Inject
     public TransportNodePrometheusMetricsAction(Settings settings, Client client,
@@ -152,36 +158,36 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
 
         private void gatherRequests() {
             listener.onResponse(buildResponse(clusterHealthResponse, localNodesInfoResponse, nodesStatsResponse, indicesStatsResponse,
-                    clusterStateResponse));
+                    clusterStateResponse, remoteStatsResponse));
         }
 
         private final ActionListener<ClusterStateResponse> clusterStateResponseActionListener =
-            new ActionListener<ClusterStateResponse>() {
-                @Override
-                public void onResponse(ClusterStateResponse response) {
-                    clusterStateResponse = response;
-                    gatherRequests();
-                }
+                new ActionListener<ClusterStateResponse>() {
+                    @Override
+                    public void onResponse(ClusterStateResponse response) {
+                        clusterStateResponse = response;
+                        gatherRequests();
+                    }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Cluster state request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Cluster state request failed", e));
+                    }
+                };
 
         private void makeRemoteStoreStatsActionCall(ActionListener<JsonNode> remoteStoreStatActionListener) {
             JsonNode jsonNodeResponse = null;
             try (RestHighLevelClient client = new RestHighLevelClient(
                     RestClient.builder(
-                            new HttpHost("localhost", 9200, "http")
+                            new HttpHost("http", "localhost", 9200)
                     )
             )) {
-                Request request = new Request("GET", "/_cat/remote_store/test-index");
+                Request request = new Request("GET", "/_cat/remote_store/test-index?format=json");
                 Response response = client.getLowLevelClient().performRequest(request);
                 String responseBody = EntityUtils.toString(response.getEntity());
                 jsonNodeResponse = objectMapper.readTree(responseBody);
             } catch (Exception e) {
-                logger.error("caught exception while makeRemoteStoreStatsActionCall");
+                logger.error("caught exception while makeRemoteStoreStatsActionCall", e);
             }
             remoteStoreStatActionListener.onResponse(jsonNodeResponse);
         }
@@ -201,68 +207,68 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                 };
 
         private final ActionListener<IndicesStatsResponse> indicesStatsResponseActionListener =
-            new ActionListener<IndicesStatsResponse>() {
-                @Override
-                public void onResponse(IndicesStatsResponse response) {
-                    indicesStatsResponse = response;
-                    if (isPrometheusClusterSettings) {
-                        client.admin().cluster().state(clusterStateRequest, clusterStateResponseActionListener);
-                    } else {
-                        gatherRequests();
+                new ActionListener<IndicesStatsResponse>() {
+                    @Override
+                    public void onResponse(IndicesStatsResponse response) {
+                        indicesStatsResponse = response;
+                        if (isPrometheusClusterSettings) {
+                            client.admin().cluster().state(clusterStateRequest, clusterStateResponseActionListener);
+                        } else {
+                            gatherRequests();
+                        }
                     }
-                }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Indices stats request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Indices stats request failed", e));
+                    }
+                };
 
         private final ActionListener<NodesStatsResponse> nodesStatsResponseActionListener =
-            new ActionListener<NodesStatsResponse>() {
-                @Override
-                public void onResponse(NodesStatsResponse nodeStats) {
-                    nodesStatsResponse = nodeStats;
-                    if (isPrometheusIndices) {
-                        client.admin().indices().stats(indicesStatsRequest, indicesStatsResponseActionListener);
-                    } else {
-                        indicesStatsResponseActionListener.onResponse(null);
+                new ActionListener<NodesStatsResponse>() {
+                    @Override
+                    public void onResponse(NodesStatsResponse nodeStats) {
+                        nodesStatsResponse = nodeStats;
+                        if (isPrometheusIndices) {
+                            client.admin().indices().stats(indicesStatsRequest, indicesStatsResponseActionListener);
+                        } else {
+                            indicesStatsResponseActionListener.onResponse(null);
+                        }
                     }
-                }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Nodes stats request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Nodes stats request failed", e));
+                    }
+                };
 
         private final ActionListener<NodesInfoResponse> localNodesInfoResponseActionListener =
-            new ActionListener<NodesInfoResponse>() {
-                @Override
-                public void onResponse(NodesInfoResponse nodesInfoResponse) {
-                    localNodesInfoResponse = nodesInfoResponse;
-                    client.admin().cluster().nodesStats(nodesStatsRequest, nodesStatsResponseActionListener);
-                }
+                new ActionListener<NodesInfoResponse>() {
+                    @Override
+                    public void onResponse(NodesInfoResponse nodesInfoResponse) {
+                        localNodesInfoResponse = nodesInfoResponse;
+                        client.admin().cluster().nodesStats(nodesStatsRequest, nodesStatsResponseActionListener);
+                    }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Nodes info request failed for local node", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Nodes info request failed for local node", e));
+                    }
+                };
 
         private final ActionListener<ClusterHealthResponse> clusterHealthResponseActionListener =
-            new ActionListener<ClusterHealthResponse>() {
-                @Override
-                public void onResponse(ClusterHealthResponse response) {
-                    clusterHealthResponse = response;
-                    makeRemoteStoreStatsActionCall(remoteStoreStatActionListener);
-                }
+                new ActionListener<ClusterHealthResponse>() {
+                    @Override
+                    public void onResponse(ClusterHealthResponse response) {
+                        clusterHealthResponse = response;
+                        makeRemoteStoreStatsActionCall(remoteStoreStatActionListener);
+                    }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Cluster health request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Cluster health request failed", e));
+                    }
+                };
 
         private void start() {
             client.admin().cluster().health(healthRequest, clusterHealthResponseActionListener);
@@ -272,13 +278,36 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                                                               NodesInfoResponse localNodesInfoResponse,
                                                               NodesStatsResponse nodesStats,
                                                               @Nullable IndicesStatsResponse indicesStats,
-                                                              @Nullable ClusterStateResponse clusterStateResponse) {
+                                                              @Nullable ClusterStateResponse clusterStateResponse,
+                                                              @Nullable JsonNode remoteStatsResponse) {
+            NodePrometheusMetricsResponse.RemoteStoreShardStats[] remoteStoreShardStats = null;
+            if (remoteStatsResponse != null) {
+                int length = remoteStatsResponse.size();
+                remoteStoreShardStats = new NodePrometheusMetricsResponse.RemoteStoreShardStats[length];
+                for (int i = 0; i < length; i++) {
+                    JsonNode currentNode = remoteStatsResponse.get(i);
+                    String shardId = null;
+                    Iterator<Map.Entry<String, JsonNode>> fields = currentNode.fields();
+                    Map<String, Object> otherFields = new HashMap<>();
+                    while (fields.hasNext()) {
+                        Map.Entry<String, JsonNode> field = fields.next();
+                        String fieldName = field.getKey();
+                        JsonNode fieldValue = field.getValue();
+                        if ("shardId".equals(fieldName)) {
+                            shardId = fieldValue.asText();
+                        } else {
+                            otherFields.put(fieldName, fieldValue.asDouble());
+                        }
+                    }
+                    remoteStoreShardStats[i] = new NodePrometheusMetricsResponse.RemoteStoreShardStats(shardId, otherFields);
+                }
+            }
             NodePrometheusMetricsResponse response = new NodePrometheusMetricsResponse(
                     clusterHealth,
                     localNodesInfoResponse,
                     nodesStats.getNodes().toArray(new NodeStats[0]),
                     indicesStats, clusterStateResponse,
-                    settings, clusterSettings);
+                    settings, clusterSettings, remoteStoreShardStats);
             if (logger.isTraceEnabled()) {
                 logger.trace("Return response: [{}]", response);
             }

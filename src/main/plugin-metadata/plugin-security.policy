@@ -16,5 +16,5 @@
  */
 
 grant {
-    // No privileged operations are required, see #131
+    permission java.net.SocketPermission "*", "connect,resolve";
 };

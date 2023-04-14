@@ -17,6 +17,7 @@
 
 package org.opensearch.action;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.opensearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.opensearch.action.admin.cluster.node.stats.NodeStats;
@@ -26,10 +27,12 @@ import org.opensearch.action.admin.indices.stats.PackageAccessHelper;
 import org.opensearch.common.Nullable;
 import org.opensearch.common.io.stream.StreamInput;
 import org.opensearch.common.io.stream.StreamOutput;
+import org.opensearch.common.io.stream.Writeable;
 import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Settings;
 
 import java.io.IOException;
+import java.util.Map;
 
 /**
  * Action response class for Prometheus Exporter plugin.
@@ -42,6 +45,7 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
     private final NodeStats[] nodeStats;
     @Nullable private final IndicesStatsResponse indicesStats;
     private ClusterStatsData clusterStatsData = null;
+    private final RemoteStoreShardStats[] remoteStoreStats;
 
     /**
      * A constructor that materialize the instance from inputStream.
@@ -55,6 +59,7 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
         nodeStats = in.readArray(NodeStats::new, NodeStats[]::new);
         indicesStats = PackageAccessHelper.createIndicesStatsResponse(in);
         clusterStatsData = new ClusterStatsData(in);
+        remoteStoreStats = in.readOptionalArray(RemoteStoreShardStats::new, RemoteStoreShardStats[]::new);
     }
 
     /**
@@ -73,7 +78,8 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
                                          @Nullable IndicesStatsResponse indicesStats,
                                          @Nullable ClusterStateResponse clusterStateResponse,
                                          Settings settings,
-                                         ClusterSettings clusterSettings) {
+                                         ClusterSettings clusterSettings,
+                                         RemoteStoreShardStats[] remoteStoreStats) {
         this.clusterHealth = clusterHealth;
         this.nodesInfoResponse = localNodesInfoResponse;
         this.nodeStats = nodesStats;
@@ -81,6 +87,7 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
         if (clusterStateResponse != null) {
             this.clusterStatsData = new ClusterStatsData(clusterStateResponse, settings, clusterSettings);
         }
+        this.remoteStoreStats = remoteStoreStats;
     }
 
     /**
@@ -123,6 +130,10 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
         return this.clusterStatsData;
     }
 
+    public RemoteStoreShardStats[] getRemoteStoreStats() {
+        return remoteStoreStats;
+    }
+
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         clusterHealth.writeTo(out);
@@ -130,5 +141,35 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
         out.writeArray(nodeStats);
         out.writeOptionalWriteable(indicesStats);
         clusterStatsData.writeTo(out);
+        out.writeOptionalArray(remoteStoreStats);
+    }
+
+    public static class RemoteStoreShardStats implements Writeable {
+        String shardId;
+        Map<String, Object> otherFields;
+
+        public RemoteStoreShardStats(StreamInput in) throws IOException {
+            this.shardId = in.readString();
+            this.otherFields = in.readMap();
+        }
+
+        public RemoteStoreShardStats(String shardId, Map<String, Object> otherFields) {
+            this.shardId = shardId;
+            this.otherFields = otherFields;
+        }
+
+        @Override
+        public void writeTo(StreamOutput out) throws IOException {
+            out.writeString(this.shardId);
+            out.writeMap(this.otherFields);
+        }
+
+        public String getShardId() {
+            return shardId;
+        }
+
+        public Map<String, Object> getOtherFields() {
+            return otherFields;
+        }
     }
 }

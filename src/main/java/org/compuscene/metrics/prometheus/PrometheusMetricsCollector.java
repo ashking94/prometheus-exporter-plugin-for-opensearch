@@ -18,6 +18,8 @@
 package org.compuscene.metrics.prometheus;
 
 import org.opensearch.action.ClusterStatsData;
+import org.opensearch.action.NodePrometheusMetricsResponse;
+import org.opensearch.action.NodePrometheusMetricsResponse.RemoteStoreShardStats;
 import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.opensearch.action.admin.cluster.node.stats.NodeStats;
 import org.opensearch.action.admin.indices.stats.CommonStats;
@@ -42,8 +44,10 @@ import org.opensearch.transport.TransportStats;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import io.prometheus.client.Summary;
 
@@ -341,6 +345,14 @@ public class PrometheusMetricsCollector {
             catalog.setNodeGauge(nodeInfo,"indices_recovery_current_number", idx.getRecoveryStats().currentAsSource(), "source");
             catalog.setNodeGauge(nodeInfo,"indices_recovery_current_number", idx.getRecoveryStats().currentAsTarget(), "target");
             catalog.setNodeGauge(nodeInfo,"indices_recovery_throttle_time_seconds", idx.getRecoveryStats().throttleTime().getSeconds());
+        }
+    }
+
+
+    public void registerPerShardMetrics(RemoteStoreShardStats[] remoteStoreStats) {
+        if (remoteStoreStats != null) {
+            Set<String> fieldNames = remoteStoreStats[0].getOtherFields().keySet();
+            fieldNames.forEach(name -> catalog.registerClusterGauge(name, name, "shardId"));
         }
     }
 
@@ -925,7 +937,8 @@ public class PrometheusMetricsCollector {
                               @Nullable ClusterHealthResponse clusterHealthResponse,
                               NodeStats[] nodeStats,
                               @Nullable IndicesStatsResponse indicesStats,
-                              @Nullable ClusterStatsData clusterStatsData) {
+                              @Nullable ClusterStatsData clusterStatsData,
+                              @Nullable RemoteStoreShardStats[] remoteStoreShardStats) {
         Summary.Timer timer = catalog.startSummaryTimer(
                 new Tuple<>(originNodeName, originNodeId),
                 "metrics_generate_time_seconds");
@@ -956,8 +969,20 @@ public class PrometheusMetricsCollector {
         if (isPrometheusClusterSettings) {
             updateESSettings(clusterStatsData);
         }
+        updateRemoteStoreMetrics(remoteStoreShardStats);
 
         timer.observeDuration();
+    }
+
+    private void updateRemoteStoreMetrics(RemoteStoreShardStats[] remoteStoreShardStats) {
+        if (remoteStoreShardStats != null) {
+            for (RemoteStoreShardStats stat : remoteStoreShardStats) {
+                String shardId = stat.getShardId();
+                for (Map.Entry<String, Object> entry : stat.getOtherFields().entrySet()) {
+                    catalog.setClusterGauge(entry.getKey(), Double.parseDouble(entry.getValue().toString()), shardId);
+                }
+            }
+        }
     }
 
     /**
