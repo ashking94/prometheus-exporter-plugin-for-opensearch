@@ -51,6 +51,8 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -177,9 +179,15 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
 
         private void makeRemoteStoreStatsActionCall(ActionListener<JsonNode> remoteStoreStatActionListener) {
             JsonNode jsonNodeResponse = null;
+
+            try {
+                logger.info(InetAddress.getLocalHost().getHostAddress());
+            } catch (UnknownHostException e) {
+                logger.error(e);
+            }
             try (RestHighLevelClient client = new RestHighLevelClient(
                     RestClient.builder(
-                            new HttpHost("http", "localhost", 9200)
+                            new HttpHost("http", InetAddress.getLocalHost().getHostAddress(), 9200)
                     )
             )) {
                 Request request = new Request("GET", "/_cat/remote_store?format=json");
