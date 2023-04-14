@@ -182,7 +182,7 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                             new HttpHost("http", "localhost", 9200)
                     )
             )) {
-                Request request = new Request("GET", "/_cat/remote_store/test-index?format=json");
+                Request request = new Request("GET", "/_cat/remote_store?format=json");
                 Response response = client.getLowLevelClient().performRequest(request);
                 String responseBody = EntityUtils.toString(response.getEntity());
                 jsonNodeResponse = objectMapper.readTree(responseBody);
