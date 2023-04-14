@@ -17,6 +17,10 @@
 
 package org.opensearch.action;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.http.HttpHost;
+import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.compuscene.metrics.prometheus.PrometheusSettings;
@@ -35,7 +39,11 @@ import org.opensearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.client.Client;
+import org.opensearch.client.Request;
 import org.opensearch.client.Requests;
+import org.opensearch.client.Response;
+import org.opensearch.client.RestClient;
+import org.opensearch.client.RestHighLevelClient;
 import org.opensearch.common.Nullable;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.ClusterSettings;
@@ -57,6 +65,7 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
     private final ClusterSettings clusterSettings;
     private final PrometheusSettings prometheusSettings;
     private final Logger logger = LogManager.getLogger(getClass());
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * A constructor.
@@ -99,6 +108,7 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
         private NodesStatsResponse nodesStatsResponse = null;
         private IndicesStatsResponse indicesStatsResponse = null;
         private ClusterStateResponse clusterStateResponse = null;
+        private JsonNode remoteStatsResponse = null;
 
         // read the state of prometheus dynamic settings only once at the beginning of the async request
         private final boolean isPrometheusIndices = prometheusSettings.getPrometheusIndices();
@@ -159,6 +169,37 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                 }
             };
 
+        private void makeRemoteStoreStatsActionCall(ActionListener<JsonNode> remoteStoreStatActionListener) {
+            JsonNode jsonNodeResponse = null;
+            try (RestHighLevelClient client = new RestHighLevelClient(
+                    RestClient.builder(
+                            new HttpHost("localhost", 9200, "http")
+                    )
+            )) {
+                Request request = new Request("GET", "/_cat/remote_store/test-index");
+                Response response = client.getLowLevelClient().performRequest(request);
+                String responseBody = EntityUtils.toString(response.getEntity());
+                jsonNodeResponse = objectMapper.readTree(responseBody);
+            } catch (Exception e) {
+                logger.error("caught exception while makeRemoteStoreStatsActionCall");
+            }
+            remoteStoreStatActionListener.onResponse(jsonNodeResponse);
+        }
+
+        private final ActionListener<JsonNode> remoteStoreStatActionListener =
+                new ActionListener<JsonNode>() {
+                    @Override
+                    public void onResponse(JsonNode response) {
+                        remoteStatsResponse = response;
+                        client.admin().cluster().nodesInfo(localNodesInfoRequest, localNodesInfoResponseActionListener);
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        // will never happen
+                    }
+                };
+
         private final ActionListener<IndicesStatsResponse> indicesStatsResponseActionListener =
             new ActionListener<IndicesStatsResponse>() {
                 @Override
@@ -214,7 +255,7 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                 @Override
                 public void onResponse(ClusterHealthResponse response) {
                     clusterHealthResponse = response;
-                    client.admin().cluster().nodesInfo(localNodesInfoRequest, localNodesInfoResponseActionListener);
+                    makeRemoteStoreStatsActionCall(remoteStoreStatActionListener);
                 }
 
                 @Override

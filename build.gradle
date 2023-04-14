@@ -99,6 +99,8 @@ dependencies {
 //    compile "io.prometheus:simpleclient_common:${versions.prometheus}"
     implementation group: 'io.prometheus', name: 'simpleclient', version: '0.16.0'
     implementation group: 'io.prometheus', name: 'simpleclient_common', version: '0.16.0'
+    implementation group: 'org.opensearch.client', name: 'opensearch-rest-high-level-client', version: '2.6.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.14.2'
 }
 
 restResources {
