@@ -350,7 +350,7 @@ public class PrometheusMetricsCollector {
 
 
     public void registerPerShardMetrics(RemoteStoreShardStats[] remoteStoreStats) {
-        if (remoteStoreStats != null) {
+        if (remoteStoreStats != null && remoteStoreStats.length > 0) {
             Set<String> fieldNames = remoteStoreStats[0].getOtherFields().keySet();
             fieldNames.forEach(name -> catalog.registerClusterGauge(name, name, "shardId"));
         }
