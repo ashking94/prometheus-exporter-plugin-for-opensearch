@@ -180,14 +180,15 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
         private void makeRemoteStoreStatsActionCall(ActionListener<JsonNode> remoteStoreStatActionListener) {
             JsonNode jsonNodeResponse = null;
 
-            try {
-                logger.info(InetAddress.getLocalHost().getHostAddress());
-            } catch (UnknownHostException e) {
-                logger.error(e);
+            String ipAddress = System.getProperty("ipAddress");
+            if (ipAddress == null) {
+                remoteStoreStatActionListener.onResponse(null);
+                return;
             }
+
             try (RestHighLevelClient client = new RestHighLevelClient(
                     RestClient.builder(
-                            new HttpHost("http", InetAddress.getLocalHost().getHostAddress(), 9200)
+                            new HttpHost("http", ipAddress, 9200)
                     )
             )) {
                 Request request = new Request("GET", "/_cat/remote_store?format=json");
