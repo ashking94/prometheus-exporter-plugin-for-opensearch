@@ -180,23 +180,28 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
         private void makeRemoteStoreStatsActionCall(ActionListener<JsonNode> remoteStoreStatActionListener) {
             JsonNode jsonNodeResponse = null;
 
-            String ipAddress = System.getProperty("ipAddress");
-            if (ipAddress == null) {
-                remoteStoreStatActionListener.onResponse(null);
-                return;
-            }
+            try {
+                String ipAddress = System.getProperty("ipAddress");
+                String host = System.getProperty("ipAddressHost");
+                if (ipAddress == null || host == null) {
+                    remoteStoreStatActionListener.onResponse(null);
+                    return;
+                }
 
-            try (RestHighLevelClient client = new RestHighLevelClient(
-                    RestClient.builder(
-                            new HttpHost("http", ipAddress, 9200)
-                    )
-            )) {
-                Request request = new Request("GET", "/_cat/remote_store?format=json");
-                Response response = client.getLowLevelClient().performRequest(request);
-                String responseBody = EntityUtils.toString(response.getEntity());
-                jsonNodeResponse = objectMapper.readTree(responseBody);
-            } catch (Exception e) {
-                logger.error("caught exception while makeRemoteStoreStatsActionCall", e);
+                try (RestHighLevelClient client = new RestHighLevelClient(
+                        RestClient.builder(
+                                new HttpHost("http", ipAddress, Integer.parseInt(host))
+                        )
+                )) {
+                    Request request = new Request("GET", "/_cat/remote_store?format=json");
+                    Response response = client.getLowLevelClient().performRequest(request);
+                    String responseBody = EntityUtils.toString(response.getEntity());
+                    jsonNodeResponse = objectMapper.readTree(responseBody);
+                } catch (Exception e) {
+                    logger.error("caught exception while makeRemoteStoreStatsActionCall", e);
+                }
+            } catch (Exception exception) {
+                logger.error(exception);
             }
             remoteStoreStatActionListener.onResponse(jsonNodeResponse);
         }
