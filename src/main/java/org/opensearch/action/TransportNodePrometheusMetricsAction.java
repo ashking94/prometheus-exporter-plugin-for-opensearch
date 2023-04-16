@@ -28,6 +28,8 @@ import org.opensearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.opensearch.action.admin.cluster.node.stats.NodeStats;
 import org.opensearch.action.admin.cluster.node.stats.NodesStatsRequest;
 import org.opensearch.action.admin.cluster.node.stats.NodesStatsResponse;
+import org.opensearch.action.admin.cluster.node.stats.RemoteStoreStatsRequest;
+import org.opensearch.action.admin.cluster.node.stats.RemoteStoreStatsResponse;
 import org.opensearch.action.admin.cluster.state.ClusterStateRequest;
 import org.opensearch.action.admin.cluster.state.ClusterStateResponse;
 import org.opensearch.action.admin.indices.stats.IndicesStatsRequest;
@@ -93,8 +95,10 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
         private final NodesStatsRequest nodesStatsRequest;
         private final IndicesStatsRequest indicesStatsRequest;
         private final ClusterStateRequest clusterStateRequest;
+        private final RemoteStoreStatsRequest remoteStoreStatsRequest;
 
         private ClusterHealthResponse clusterHealthResponse = null;
+        private RemoteStoreStatsResponse remoteStoreStatsResponse = null;
         private NodesInfoResponse localNodesInfoResponse = null;
         private NodesStatsResponse nodesStatsResponse = null;
         private IndicesStatsResponse indicesStatsResponse = null;
@@ -138,11 +142,13 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
             // We prefer to send it to master node (hence local=false; it should be set by default but we want to be sure).
             this.clusterStateRequest = isPrometheusClusterSettings ? Requests.clusterStateRequest()
                     .clear().metadata(true).local(false) : null;
+            this.remoteStoreStatsRequest = new RemoteStoreStatsRequest();
+            this.remoteStoreStatsRequest.all();
         }
 
         private void gatherRequests() {
             listener.onResponse(buildResponse(clusterHealthResponse, localNodesInfoResponse, nodesStatsResponse, indicesStatsResponse,
-                    clusterStateResponse));
+                    clusterStateResponse, remoteStoreStatsResponse));
         }
 
         private final ActionListener<ClusterStateResponse> clusterStateResponseActionListener =
@@ -214,7 +220,7 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                 @Override
                 public void onResponse(ClusterHealthResponse response) {
                     clusterHealthResponse = response;
-                    client.admin().cluster().nodesInfo(localNodesInfoRequest, localNodesInfoResponseActionListener);
+                    client.admin().cluster().remoteStoreStats(remoteStoreStatsRequest, remoteStoreStatsResponseActionListener);
                 }
 
                 @Override
@@ -222,6 +228,21 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                     listener.onFailure(new OpenSearchException("Cluster health request failed", e));
                 }
             };
+
+        private final ActionListener<RemoteStoreStatsResponse> remoteStoreStatsResponseActionListener =
+                new ActionListener<RemoteStoreStatsResponse>() {
+                    @Override
+                    public void onResponse(RemoteStoreStatsResponse response) {
+                        remoteStoreStatsResponse = response;
+                        client.admin().cluster().nodesInfo(localNodesInfoRequest, localNodesInfoResponseActionListener);
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        logger.error("Failed while getting remote store stats", e);
+                        listener.onFailure(new OpenSearchException("Failed while getting remote store stats", e));
+                    }
+                };
 
         private void start() {
             client.admin().cluster().health(healthRequest, clusterHealthResponseActionListener);
@@ -231,13 +252,14 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                                                               NodesInfoResponse localNodesInfoResponse,
                                                               NodesStatsResponse nodesStats,
                                                               @Nullable IndicesStatsResponse indicesStats,
-                                                              @Nullable ClusterStateResponse clusterStateResponse) {
+                                                              @Nullable ClusterStateResponse clusterStateResponse,
+                                                              RemoteStoreStatsResponse remoteStoreStats) {
             NodePrometheusMetricsResponse response = new NodePrometheusMetricsResponse(
                     clusterHealth,
                     localNodesInfoResponse,
                     nodesStats.getNodes().toArray(new NodeStats[0]),
                     indicesStats, clusterStateResponse,
-                    settings, clusterSettings);
+                    settings, clusterSettings, remoteStoreStats);
             if (logger.isTraceEnabled()) {
                 logger.trace("Return response: [{}]", response);
             }

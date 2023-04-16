@@ -20,14 +20,17 @@ package org.compuscene.metrics.prometheus;
 import org.opensearch.action.ClusterStatsData;
 import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.opensearch.action.admin.cluster.node.stats.NodeStats;
+import org.opensearch.action.admin.cluster.node.stats.RemoteStoreStatsResponse;
 import org.opensearch.action.admin.indices.stats.CommonStats;
 import org.opensearch.action.admin.indices.stats.IndexStats;
 import org.opensearch.action.admin.indices.stats.IndicesStatsResponse;
+import org.opensearch.action.admin.indices.stats.RemoteStoreStats;
 import org.opensearch.cluster.health.ClusterIndexHealth;
 import org.opensearch.cluster.node.DiscoveryNodeRole;
 import org.opensearch.common.Nullable;
 import org.opensearch.common.collect.Tuple;
 import org.opensearch.http.HttpStats;
+import org.opensearch.index.RemoteSegmentUploadShardStatsTracker;
 import org.opensearch.indices.NodeIndicesStats;
 import org.opensearch.indices.breaker.AllCircuitBreakerStats;
 import org.opensearch.indices.breaker.CircuitBreakerStats;
@@ -91,6 +94,26 @@ public class PrometheusMetricsCollector {
         registerOsMetrics();
         registerFsMetrics();
         registerESSettings();
+        registerRemoteStoreMetrics();
+    }
+
+    private void registerRemoteStoreMetrics() {
+        catalog.registerClusterGauge("remote_local_refresh_seq_no","local_refresh_seq_no", "shardId");
+        catalog.registerClusterGauge("remote_local_refresh_time","local_refresh_time", "shardId");
+        catalog.registerClusterGauge("remote_remote_refresh_seq_no","remote_refresh_seq_no", "shardId");
+        catalog.registerClusterGauge("remote_remote_refresh_time","remote_refresh_time", "shardId");
+        catalog.registerClusterGauge("remote_upload_bytes_started","upload_bytes_started", "shardId");
+        catalog.registerClusterGauge("remote_upload_bytes_failed","upload_bytes_failed", "shardId");
+        catalog.registerClusterGauge("remote_upload_bytes_succeeded","upload_bytes_succeeded", "shardId");
+        catalog.registerClusterGauge("remote_total_upload_started","total_upload_started", "shardId");
+        catalog.registerClusterGauge("remote_total_upload_failed","total_upload_failed", "shardId");
+        catalog.registerClusterGauge("remote_total_upload_succeeded","total_upload_succeeded", "shardId");
+        catalog.registerClusterGauge("remote_upload_time_average","upload_time_average", "shardId");
+        catalog.registerClusterGauge("remote_upload_bytes_per_sec_average","upload_bytes_per_sec_average", "shardId");
+        catalog.registerClusterGauge("remote_upload_bytes_average","upload_bytes_average", "shardId");
+        catalog.registerClusterGauge("remote_bytes_behind","bytes_behind", "shardId");
+        catalog.registerClusterGauge("remote_inflight_upload_bytes","inflight_upload_bytes", "shardId");
+        catalog.registerClusterGauge("remote_inflight_uploads","inflight_uploads", "shardId");
     }
 
     private void registerClusterMetrics() {
@@ -911,21 +934,22 @@ public class PrometheusMetricsCollector {
 
     /**
      * Update all collected metrics from relevant response data.
-     *
+     * <p>
      * Metrics gathering requests were originated on one particular node called "originating" node.
      *
-     * @param originNodeName            Originating node name.
-     * @param originNodeId              Originating node ID.
-     * @param clusterHealthResponse     ClusterHealthResponse
-     * @param nodeStats                 NodeStats filtered using nodes filter
-     * @param indicesStats              IndicesStatsResponse
-     * @param clusterStatsData          ClusterStatsData
+     * @param originNodeName        Originating node name.
+     * @param originNodeId          Originating node ID.
+     * @param clusterHealthResponse ClusterHealthResponse
+     * @param nodeStats             NodeStats filtered using nodes filter
+     * @param indicesStats          IndicesStatsResponse
+     * @param clusterStatsData      ClusterStatsData
+     * @param remoteStoreStats
      */
     public void updateMetrics(String originNodeName, String originNodeId,
                               @Nullable ClusterHealthResponse clusterHealthResponse,
                               NodeStats[] nodeStats,
                               @Nullable IndicesStatsResponse indicesStats,
-                              @Nullable ClusterStatsData clusterStatsData) {
+                              @Nullable ClusterStatsData clusterStatsData, RemoteStoreStatsResponse remoteStoreStats) {
         Summary.Timer timer = catalog.startSummaryTimer(
                 new Tuple<>(originNodeName, originNodeId),
                 "metrics_generate_time_seconds");
@@ -956,8 +980,36 @@ public class PrometheusMetricsCollector {
         if (isPrometheusClusterSettings) {
             updateESSettings(clusterStatsData);
         }
+        updateRemoteStoreMetrics(remoteStoreStats);
 
         timer.observeDuration();
+    }
+
+    private void updateRemoteStoreMetrics(RemoteStoreStatsResponse remoteStoreStats) {
+        if (remoteStoreStats != null && remoteStoreStats.getShards() != null) {
+            if (remoteStoreStats.getShards() != null) {
+                for (RemoteStoreStats stat : remoteStoreStats.getShards()) {
+                    RemoteSegmentUploadShardStatsTracker tracker = stat.getStats();
+                    String shardId = tracker.getShardId().toString();
+                    catalog.setClusterGauge("remote_local_refresh_seq_no", tracker.getLocalRefreshSeqNo(), shardId);
+                    catalog.setClusterGauge("remote_local_refresh_time", tracker.getLocalRefreshTime(), shardId);
+                    catalog.setClusterGauge("remote_remote_refresh_seq_no", tracker.getRemoteRefreshSeqNo(), shardId);
+                    catalog.setClusterGauge("remote_remote_refresh_time", tracker.getRemoteRefreshTime(), shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_started", tracker.getUploadBytesStarted(), shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_failed", tracker.getUploadBytesFailed(), shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_succeeded", tracker.getUploadBytesSucceeded(), shardId);
+                    catalog.setClusterGauge("remote_total_upload_started", tracker.getTotalUploadsStarted(), shardId);
+                    catalog.setClusterGauge("remote_total_upload_failed", tracker.getTotalUploadsFailed(), shardId);
+                    catalog.setClusterGauge("remote_total_upload_succeeded", tracker.getTotalUploadsSucceeded(), shardId);
+                    catalog.setClusterGauge("remote_upload_time_average", tracker.getUploadTimeAverage(), shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_per_sec_average", tracker.getUploadBytesPerSecondAverage(), shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_average", tracker.getUploadBytesAverage(), shardId);
+                    catalog.setClusterGauge("remote_bytes_behind", tracker.getBytesBehind(), shardId);
+                    catalog.setClusterGauge("remote_inflight_upload_bytes", tracker.getInflightUploadBytes(), shardId);
+                    catalog.setClusterGauge("remote_inflight_uploads", tracker.getInflightUploads(), shardId);
+                }
+            }
+        }
     }
 
     /**
