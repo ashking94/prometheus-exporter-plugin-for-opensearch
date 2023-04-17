@@ -20,7 +20,7 @@ package org.opensearch.action;
 import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.opensearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.opensearch.action.admin.cluster.node.stats.NodeStats;
-import org.opensearch.action.admin.cluster.node.stats.RemoteStoreStatsResponse;
+import org.opensearch.action.admin.cluster.remotestore.stats.RemoteStoreStatsResponse;
 import org.opensearch.action.admin.cluster.state.ClusterStateResponse;
 import org.opensearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.opensearch.action.admin.indices.stats.PackageAccessHelper;
@@ -41,12 +41,14 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
     private final ClusterHealthResponse clusterHealth;
     private final NodesInfoResponse nodesInfoResponse;
     private final NodeStats[] nodeStats;
-    @Nullable private final IndicesStatsResponse indicesStats;
+    @Nullable
+    private final IndicesStatsResponse indicesStats;
     private ClusterStatsData clusterStatsData = null;
     private RemoteStoreStatsResponse remoteStoreStats;
 
     /**
      * A constructor that materialize the instance from inputStream.
+     *
      * @param in inputStream
      * @throws IOException if there is an exception reading from inputStream
      */
@@ -62,13 +64,14 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
 
     /**
      * A constructor.
-     * @param clusterHealth ClusterHealthResponse
+     *
+     * @param clusterHealth          ClusterHealthResponse
      * @param localNodesInfoResponse NodesInfoResponse
-     * @param nodesStats NodesStats
-     * @param indicesStats IndicesStats
-     * @param clusterStateResponse ClusterStateResponse
-     * @param settings Settings
-     * @param clusterSettings ClusterSettings
+     * @param nodesStats             NodesStats
+     * @param indicesStats           IndicesStats
+     * @param clusterStateResponse   ClusterStateResponse
+     * @param settings               Settings
+     * @param clusterSettings        ClusterSettings
      */
     public NodePrometheusMetricsResponse(ClusterHealthResponse clusterHealth,
                                          NodesInfoResponse localNodesInfoResponse,
@@ -90,6 +93,7 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
 
     /**
      * Get internal {@link ClusterHealthResponse} object.
+     *
      * @return ClusterHealthResponse object
      */
     public ClusterHealthResponse getClusterHealth() {
@@ -98,12 +102,16 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
 
     /**
      * Get internal {@link NodesInfoResponse} object.
+     *
      * @return NodesInfoResponse object
      */
-    public NodesInfoResponse getLocalNodesInfoResponse() { return this.nodesInfoResponse; }
+    public NodesInfoResponse getLocalNodesInfoResponse() {
+        return this.nodesInfoResponse;
+    }
 
     /**
      * Get internal {@link NodeStats} array.
+     *
      * @return NodeStats array
      */
     public NodeStats[] getNodeStats() {
@@ -112,6 +120,7 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
 
     /**
      * Get internal {@link IndicesStatsResponse} object.
+     *
      * @return IndicesStatsResponse object
      */
     @Nullable
@@ -121,6 +130,7 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
 
     /**
      * Get internal {@link ClusterStatsData} object.
+     *
      * @return ClusterStatsData object
      */
     @Nullable

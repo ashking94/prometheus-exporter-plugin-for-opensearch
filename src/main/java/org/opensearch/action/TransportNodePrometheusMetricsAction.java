@@ -28,8 +28,8 @@ import org.opensearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.opensearch.action.admin.cluster.node.stats.NodeStats;
 import org.opensearch.action.admin.cluster.node.stats.NodesStatsRequest;
 import org.opensearch.action.admin.cluster.node.stats.NodesStatsResponse;
-import org.opensearch.action.admin.cluster.node.stats.RemoteStoreStatsRequest;
-import org.opensearch.action.admin.cluster.node.stats.RemoteStoreStatsResponse;
+import org.opensearch.action.admin.cluster.remotestore.stats.RemoteStoreStatsRequest;
+import org.opensearch.action.admin.cluster.remotestore.stats.RemoteStoreStatsResponse;
 import org.opensearch.action.admin.cluster.state.ClusterStateRequest;
 import org.opensearch.action.admin.cluster.state.ClusterStateResponse;
 import org.opensearch.action.admin.indices.stats.IndicesStatsRequest;
@@ -47,7 +47,7 @@ import org.opensearch.transport.TransportService;
 
 /**
  * Transport action class for Prometheus Exporter plugin.
- *
+ * <p>
  * It performs several requests within the cluster to gather "cluster health", "local nodes info", "nodes stats", "indices stats"
  * and "cluster state" (i.e. cluster settings) info. Some of those requests are optional depending on plugin
  * settings.
@@ -62,11 +62,12 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
 
     /**
      * A constructor.
-     * @param settings Settings
-     * @param client Cluster client
+     *
+     * @param settings         Settings
+     * @param client           Cluster client
      * @param transportService Transport service
-     * @param actionFilters Action filters
-     * @param clusterSettings Cluster settings
+     * @param actionFilters    Action filters
+     * @param clusterSettings  Cluster settings
      */
     @Inject
     public TransportNodePrometheusMetricsAction(Settings settings, Client client,
@@ -152,82 +153,82 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
         }
 
         private final ActionListener<ClusterStateResponse> clusterStateResponseActionListener =
-            new ActionListener<ClusterStateResponse>() {
-                @Override
-                public void onResponse(ClusterStateResponse response) {
-                    clusterStateResponse = response;
-                    gatherRequests();
-                }
-
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Cluster state request failed", e));
-                }
-            };
-
-        private final ActionListener<IndicesStatsResponse> indicesStatsResponseActionListener =
-            new ActionListener<IndicesStatsResponse>() {
-                @Override
-                public void onResponse(IndicesStatsResponse response) {
-                    indicesStatsResponse = response;
-                    if (isPrometheusClusterSettings) {
-                        client.admin().cluster().state(clusterStateRequest, clusterStateResponseActionListener);
-                    } else {
+                new ActionListener<ClusterStateResponse>() {
+                    @Override
+                    public void onResponse(ClusterStateResponse response) {
+                        clusterStateResponse = response;
                         gatherRequests();
                     }
-                }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Indices stats request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Cluster state request failed", e));
+                    }
+                };
+
+        private final ActionListener<IndicesStatsResponse> indicesStatsResponseActionListener =
+                new ActionListener<IndicesStatsResponse>() {
+                    @Override
+                    public void onResponse(IndicesStatsResponse response) {
+                        indicesStatsResponse = response;
+                        if (isPrometheusClusterSettings) {
+                            client.admin().cluster().state(clusterStateRequest, clusterStateResponseActionListener);
+                        } else {
+                            gatherRequests();
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Indices stats request failed", e));
+                    }
+                };
 
         private final ActionListener<NodesStatsResponse> nodesStatsResponseActionListener =
-            new ActionListener<NodesStatsResponse>() {
-                @Override
-                public void onResponse(NodesStatsResponse nodeStats) {
-                    nodesStatsResponse = nodeStats;
-                    if (isPrometheusIndices) {
-                        client.admin().indices().stats(indicesStatsRequest, indicesStatsResponseActionListener);
-                    } else {
-                        indicesStatsResponseActionListener.onResponse(null);
+                new ActionListener<NodesStatsResponse>() {
+                    @Override
+                    public void onResponse(NodesStatsResponse nodeStats) {
+                        nodesStatsResponse = nodeStats;
+                        if (isPrometheusIndices) {
+                            client.admin().indices().stats(indicesStatsRequest, indicesStatsResponseActionListener);
+                        } else {
+                            indicesStatsResponseActionListener.onResponse(null);
+                        }
                     }
-                }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Nodes stats request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Nodes stats request failed", e));
+                    }
+                };
 
         private final ActionListener<NodesInfoResponse> localNodesInfoResponseActionListener =
-            new ActionListener<NodesInfoResponse>() {
-                @Override
-                public void onResponse(NodesInfoResponse nodesInfoResponse) {
-                    localNodesInfoResponse = nodesInfoResponse;
-                    client.admin().cluster().nodesStats(nodesStatsRequest, nodesStatsResponseActionListener);
-                }
+                new ActionListener<NodesInfoResponse>() {
+                    @Override
+                    public void onResponse(NodesInfoResponse nodesInfoResponse) {
+                        localNodesInfoResponse = nodesInfoResponse;
+                        client.admin().cluster().nodesStats(nodesStatsRequest, nodesStatsResponseActionListener);
+                    }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Nodes info request failed for local node", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Nodes info request failed for local node", e));
+                    }
+                };
 
         private final ActionListener<ClusterHealthResponse> clusterHealthResponseActionListener =
-            new ActionListener<ClusterHealthResponse>() {
-                @Override
-                public void onResponse(ClusterHealthResponse response) {
-                    clusterHealthResponse = response;
-                    client.admin().cluster().remoteStoreStats(remoteStoreStatsRequest, remoteStoreStatsResponseActionListener);
-                }
+                new ActionListener<ClusterHealthResponse>() {
+                    @Override
+                    public void onResponse(ClusterHealthResponse response) {
+                        clusterHealthResponse = response;
+                        client.admin().cluster().remoteStoreStats(remoteStoreStatsRequest, remoteStoreStatsResponseActionListener);
+                    }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Cluster health request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Cluster health request failed", e));
+                    }
+                };
 
         private final ActionListener<RemoteStoreStatsResponse> remoteStoreStatsResponseActionListener =
                 new ActionListener<RemoteStoreStatsResponse>() {
