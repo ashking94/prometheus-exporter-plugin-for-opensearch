@@ -116,6 +116,7 @@ public class PrometheusMetricsCollector {
         catalog.registerClusterGauge("remote_bytes_lag", "bytes_lag", "shardId");
         catalog.registerClusterGauge("remote_inflight_upload_bytes", "inflight_upload_bytes", "shardId");
         catalog.registerClusterGauge("remote_inflight_uploads", "inflight_uploads", "shardId");
+        catalog.registerClusterGauge("remote_rejection_count", "rejection_count", "shardId");
     }
 
     private void registerClusterMetrics() {
@@ -1023,6 +1024,7 @@ public class PrometheusMetricsCollector {
                     catalog.setClusterGauge("remote_bytes_lag", tracker.getBytesLag(), shardId);
                     catalog.setClusterGauge("remote_inflight_upload_bytes", tracker.getInflightUploadBytes(), shardId);
                     catalog.setClusterGauge("remote_inflight_uploads", tracker.getInflightUploads(), shardId);
+                    catalog.setClusterGauge("remote_rejection_count", tracker.getRejectionCount(), shardId);
                 }
             }
         }
