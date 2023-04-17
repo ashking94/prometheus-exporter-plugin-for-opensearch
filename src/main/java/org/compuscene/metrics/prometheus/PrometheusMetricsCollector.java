@@ -108,7 +108,7 @@ public class PrometheusMetricsCollector {
         catalog.registerClusterGauge("remote_total_upload_started", "total_upload_started", "shardId");
         catalog.registerClusterGauge("remote_total_upload_failed", "total_upload_failed", "shardId");
         catalog.registerClusterGauge("remote_total_upload_succeeded", "total_upload_succeeded", "shardId");
-        catalog.registerClusterGauge("remote_upload_time_average", "upload_time_average", "shardId");
+        catalog.registerClusterGauge("remote_upload_time_ms_average", "upload_time_average", "shardId");
         catalog.registerClusterGauge("remote_upload_bytes_per_sec_average", "upload_bytes_per_sec_average", "shardId");
         catalog.registerClusterGauge("remote_upload_bytes_average", "upload_bytes_average", "shardId");
         catalog.registerClusterGauge("remote_bytes_behind", "bytes_behind", "shardId");
@@ -1013,7 +1013,7 @@ public class PrometheusMetricsCollector {
                     catalog.setClusterGauge("remote_total_upload_started", tracker.getTotalUploadsStarted(), shardId);
                     catalog.setClusterGauge("remote_total_upload_failed", tracker.getTotalUploadsFailed(), shardId);
                     catalog.setClusterGauge("remote_total_upload_succeeded", tracker.getTotalUploadsSucceeded(), shardId);
-                    catalog.setClusterGauge("remote_upload_time_average", tracker.getUploadTimeAverage(), shardId);
+                    catalog.setClusterGauge("remote_upload_time_ms_average", tracker.getUploadTimeAverage() / 1000_000L, shardId);
                     catalog.setClusterGauge("remote_upload_bytes_per_sec_average", tracker.getUploadBytesPerSecondAverage(), shardId);
                     catalog.setClusterGauge("remote_upload_bytes_average", tracker.getUploadBytesAverage(), shardId);
                     catalog.setClusterGauge("remote_bytes_behind", tracker.getBytesBehind(), shardId);
