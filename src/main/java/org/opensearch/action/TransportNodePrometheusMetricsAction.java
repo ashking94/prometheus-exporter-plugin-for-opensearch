@@ -144,7 +144,7 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
             this.clusterStateRequest = isPrometheusClusterSettings ? Requests.clusterStateRequest()
                     .clear().metadata(true).local(false) : null;
             this.remoteStoreStatsRequest = new RemoteStoreStatsRequest();
-            this.remoteStoreStatsRequest.all();
+            this.remoteStoreStatsRequest.local(true);
         }
 
         private void gatherRequests() {

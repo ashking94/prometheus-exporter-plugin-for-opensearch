@@ -31,7 +31,7 @@ import org.opensearch.cluster.node.DiscoveryNodeRole;
 import org.opensearch.common.Nullable;
 import org.opensearch.common.collect.Tuple;
 import org.opensearch.http.HttpStats;
-import org.opensearch.index.RemoteSegmentUploadShardStatsTracker;
+import org.opensearch.index.remote.RemoteRefreshSegmentTracker;
 import org.opensearch.indices.NodeIndicesStats;
 import org.opensearch.indices.breaker.AllCircuitBreakerStats;
 import org.opensearch.indices.breaker.CircuitBreakerStats;
@@ -99,12 +99,10 @@ public class PrometheusMetricsCollector {
 
     private void registerRemoteStoreMetrics() {
         catalog.registerClusterGauge("remote_local_refresh_seq_no", "local_refresh_seq_no", "shardId");
-        catalog.registerClusterGauge("remote_local_refresh_time", "local_refresh_time", "shardId");
         catalog.registerClusterGauge("remote_remote_refresh_seq_no", "remote_refresh_seq_no", "shardId");
-        catalog.registerClusterGauge("remote_remote_refresh_time", "remote_refresh_time", "shardId");
-        catalog.registerClusterGauge("remote_upload_bytes_started", "upload_bytes_started", "shardId");
         catalog.registerClusterGauge("remote_seq_no_lag", "seq_no_lag", "shardId");
         catalog.registerClusterGauge("remote_time_lag_ms", "time_lag", "shardId");
+        catalog.registerClusterGauge("remote_upload_bytes_started", "upload_bytes_started", "shardId");
         catalog.registerClusterGauge("remote_upload_bytes_failed", "upload_bytes_failed", "shardId");
         catalog.registerClusterGauge("remote_upload_bytes_succeeded", "upload_bytes_succeeded", "shardId");
         catalog.registerClusterGauge("remote_total_upload_started", "total_upload_started", "shardId");
@@ -114,8 +112,6 @@ public class PrometheusMetricsCollector {
         catalog.registerClusterGauge("remote_upload_bytes_per_sec_average", "upload_bytes_per_sec_average", "shardId");
         catalog.registerClusterGauge("remote_upload_bytes_average", "upload_bytes_average", "shardId");
         catalog.registerClusterGauge("remote_bytes_lag", "bytes_lag", "shardId");
-        catalog.registerClusterGauge("remote_inflight_upload_bytes", "inflight_upload_bytes", "shardId");
-        catalog.registerClusterGauge("remote_inflight_uploads", "inflight_uploads", "shardId");
         catalog.registerClusterGauge("remote_rejection_count", "rejection_count", "shardId");
     }
 
@@ -1004,27 +1000,23 @@ public class PrometheusMetricsCollector {
         if (remoteStoreStats != null && remoteStoreStats.getShards() != null) {
             if (remoteStoreStats.getShards() != null) {
                 for (RemoteStoreStats stat : remoteStoreStats.getShards()) {
-                    RemoteSegmentUploadShardStatsTracker tracker = stat.getStats();
-                    String shardId = tracker.getShardId().toString();
-                    catalog.setClusterGauge("remote_local_refresh_seq_no", tracker.getLocalRefreshSeqNo(), shardId);
-                    catalog.setClusterGauge("remote_local_refresh_time", tracker.getLocalRefreshTime(), shardId);
-                    catalog.setClusterGauge("remote_remote_refresh_seq_no", tracker.getRemoteRefreshSeqNo(), shardId);
-                    catalog.setClusterGauge("remote_remote_refresh_time", tracker.getRemoteRefreshTime(), shardId);
-                    catalog.setClusterGauge("remote_seq_no_lag", tracker.getSeqNoLag(), shardId);
-                    catalog.setClusterGauge("remote_time_lag_ms", tracker.getTimeLag() / 1000_000L, shardId);
-                    catalog.setClusterGauge("remote_upload_bytes_started", tracker.getUploadBytesStarted(), shardId);
-                    catalog.setClusterGauge("remote_upload_bytes_failed", tracker.getUploadBytesFailed(), shardId);
-                    catalog.setClusterGauge("remote_upload_bytes_succeeded", tracker.getUploadBytesSucceeded(), shardId);
-                    catalog.setClusterGauge("remote_total_upload_started", tracker.getTotalUploadsStarted(), shardId);
-                    catalog.setClusterGauge("remote_total_upload_failed", tracker.getTotalUploadsFailed(), shardId);
-                    catalog.setClusterGauge("remote_total_upload_succeeded", tracker.getTotalUploadsSucceeded(), shardId);
-                    catalog.setClusterGauge("remote_upload_time_ms_average", tracker.getUploadTimeAverage() / 1000_000L, shardId);
-                    catalog.setClusterGauge("remote_upload_bytes_per_sec_average", tracker.getUploadBytesPerSecondAverage(), shardId);
-                    catalog.setClusterGauge("remote_upload_bytes_average", tracker.getUploadBytesAverage(), shardId);
-                    catalog.setClusterGauge("remote_bytes_lag", tracker.getBytesLag(), shardId);
-                    catalog.setClusterGauge("remote_inflight_upload_bytes", tracker.getInflightUploadBytes(), shardId);
-                    catalog.setClusterGauge("remote_inflight_uploads", tracker.getInflightUploads(), shardId);
-                    catalog.setClusterGauge("remote_rejection_count", tracker.getRejectionCount(), shardId);
+                    RemoteRefreshSegmentTracker.Stats trackerStats = stat.getStats();
+                    String shardId = trackerStats.shardId.toString();
+                    catalog.setClusterGauge("remote_local_refresh_seq_no", trackerStats.localRefreshNumber, shardId);
+                    catalog.setClusterGauge("remote_remote_refresh_seq_no", trackerStats.remoteRefreshNumber, shardId);
+                    catalog.setClusterGauge("remote_seq_no_lag", trackerStats.localRefreshNumber - trackerStats.remoteRefreshNumber, shardId);
+                    catalog.setClusterGauge("remote_time_lag_ms", trackerStats.refreshTimeLagMs, shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_started", trackerStats.uploadBytesStarted, shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_failed", trackerStats.uploadBytesFailed, shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_succeeded", trackerStats.uploadBytesSucceeded, shardId);
+                    catalog.setClusterGauge("remote_total_upload_started", trackerStats.totalUploadsStarted, shardId);
+                    catalog.setClusterGauge("remote_total_upload_failed", trackerStats.totalUploadsFailed, shardId);
+                    catalog.setClusterGauge("remote_total_upload_succeeded", trackerStats.totalUploadsSucceeded, shardId);
+                    catalog.setClusterGauge("remote_upload_time_ms_average", trackerStats.uploadTimeMovingAverage, shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_per_sec_average", trackerStats.uploadBytesPerSecMovingAverage, shardId);
+                    catalog.setClusterGauge("remote_upload_bytes_average", trackerStats.uploadBytesMovingAverage, shardId);
+                    catalog.setClusterGauge("remote_bytes_lag", trackerStats.bytesLag, shardId);
+                    catalog.setClusterGauge("remote_rejection_count", trackerStats.rejectionCount, shardId);
                 }
             }
         }
