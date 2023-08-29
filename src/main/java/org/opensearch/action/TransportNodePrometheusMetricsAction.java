@@ -28,8 +28,12 @@ import org.opensearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.opensearch.action.admin.cluster.node.stats.NodeStats;
 import org.opensearch.action.admin.cluster.node.stats.NodesStatsRequest;
 import org.opensearch.action.admin.cluster.node.stats.NodesStatsResponse;
+import org.opensearch.action.admin.cluster.remotestore.stats.RemoteStoreStatsRequest;
+import org.opensearch.action.admin.cluster.remotestore.stats.RemoteStoreStatsResponse;
 import org.opensearch.action.admin.cluster.state.ClusterStateRequest;
 import org.opensearch.action.admin.cluster.state.ClusterStateResponse;
+import org.opensearch.action.admin.indices.replication.SegmentReplicationStatsRequest;
+import org.opensearch.action.admin.indices.replication.SegmentReplicationStatsResponse;
 import org.opensearch.action.admin.indices.stats.IndicesStatsRequest;
 import org.opensearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.opensearch.action.support.ActionFilters;
@@ -45,7 +49,7 @@ import org.opensearch.transport.TransportService;
 
 /**
  * Transport action class for Prometheus Exporter plugin.
- *
+ * <p>
  * It performs several requests within the cluster to gather "cluster health", "local nodes info", "nodes stats", "indices stats"
  * and "cluster state" (i.e. cluster settings) info. Some of those requests are optional depending on plugin
  * settings.
@@ -60,11 +64,12 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
 
     /**
      * A constructor.
-     * @param settings Settings
-     * @param client Cluster client
+     *
+     * @param settings         Settings
+     * @param client           Cluster client
      * @param transportService Transport service
-     * @param actionFilters Action filters
-     * @param clusterSettings Cluster settings
+     * @param actionFilters    Action filters
+     * @param clusterSettings  Cluster settings
      */
     @Inject
     public TransportNodePrometheusMetricsAction(Settings settings, Client client,
@@ -93,8 +98,12 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
         private final NodesStatsRequest nodesStatsRequest;
         private final IndicesStatsRequest indicesStatsRequest;
         private final ClusterStateRequest clusterStateRequest;
+        private final RemoteStoreStatsRequest remoteStoreStatsRequest;
+        private final SegmentReplicationStatsRequest segmentReplicationStatsRequest;
 
         private ClusterHealthResponse clusterHealthResponse = null;
+        private RemoteStoreStatsResponse remoteStoreStatsResponse = null;
+        private SegmentReplicationStatsResponse segmentReplicationStatsResponse = null;
         private NodesInfoResponse localNodesInfoResponse = null;
         private NodesStatsResponse nodesStatsResponse = null;
         private IndicesStatsResponse indicesStatsResponse = null;
@@ -138,90 +147,132 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
             // We prefer to send it to master node (hence local=false; it should be set by default but we want to be sure).
             this.clusterStateRequest = isPrometheusClusterSettings ? Requests.clusterStateRequest()
                     .clear().metadata(true).local(false) : null;
+            this.remoteStoreStatsRequest = new RemoteStoreStatsRequest();
+            this.remoteStoreStatsRequest.local(true);
+            this.segmentReplicationStatsRequest = new SegmentReplicationStatsRequest();
         }
 
         private void gatherRequests() {
-            listener.onResponse(buildResponse(clusterHealthResponse, localNodesInfoResponse, nodesStatsResponse, indicesStatsResponse,
-                    clusterStateResponse));
+            listener.onResponse(
+                    buildResponse(
+                            clusterHealthResponse,
+                            localNodesInfoResponse,
+                            nodesStatsResponse,
+                            indicesStatsResponse,
+                            clusterStateResponse,
+                            remoteStoreStatsResponse,
+                            segmentReplicationStatsResponse
+                    )
+            );
         }
 
         private final ActionListener<ClusterStateResponse> clusterStateResponseActionListener =
-            new ActionListener<ClusterStateResponse>() {
-                @Override
-                public void onResponse(ClusterStateResponse response) {
-                    clusterStateResponse = response;
-                    gatherRequests();
-                }
-
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Cluster state request failed", e));
-                }
-            };
-
-        private final ActionListener<IndicesStatsResponse> indicesStatsResponseActionListener =
-            new ActionListener<IndicesStatsResponse>() {
-                @Override
-                public void onResponse(IndicesStatsResponse response) {
-                    indicesStatsResponse = response;
-                    if (isPrometheusClusterSettings) {
-                        client.admin().cluster().state(clusterStateRequest, clusterStateResponseActionListener);
-                    } else {
+                new ActionListener<ClusterStateResponse>() {
+                    @Override
+                    public void onResponse(ClusterStateResponse response) {
+                        clusterStateResponse = response;
                         gatherRequests();
                     }
-                }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Indices stats request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Cluster state request failed", e));
+                    }
+                };
+
+        private final ActionListener<IndicesStatsResponse> indicesStatsResponseActionListener =
+                new ActionListener<IndicesStatsResponse>() {
+                    @Override
+                    public void onResponse(IndicesStatsResponse response) {
+                        indicesStatsResponse = response;
+                        if (isPrometheusClusterSettings) {
+                            client.admin().cluster().state(clusterStateRequest, clusterStateResponseActionListener);
+                        } else {
+                            gatherRequests();
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Indices stats request failed", e));
+                    }
+                };
 
         private final ActionListener<NodesStatsResponse> nodesStatsResponseActionListener =
-            new ActionListener<NodesStatsResponse>() {
-                @Override
-                public void onResponse(NodesStatsResponse nodeStats) {
-                    nodesStatsResponse = nodeStats;
-                    if (isPrometheusIndices) {
-                        client.admin().indices().stats(indicesStatsRequest, indicesStatsResponseActionListener);
-                    } else {
-                        indicesStatsResponseActionListener.onResponse(null);
+                new ActionListener<NodesStatsResponse>() {
+                    @Override
+                    public void onResponse(NodesStatsResponse nodeStats) {
+                        nodesStatsResponse = nodeStats;
+                        if (isPrometheusIndices) {
+                            client.admin().indices().stats(indicesStatsRequest, indicesStatsResponseActionListener);
+                        } else {
+                            indicesStatsResponseActionListener.onResponse(null);
+                        }
                     }
-                }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Nodes stats request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Nodes stats request failed", e));
+                    }
+                };
 
         private final ActionListener<NodesInfoResponse> localNodesInfoResponseActionListener =
-            new ActionListener<NodesInfoResponse>() {
-                @Override
-                public void onResponse(NodesInfoResponse nodesInfoResponse) {
-                    localNodesInfoResponse = nodesInfoResponse;
-                    client.admin().cluster().nodesStats(nodesStatsRequest, nodesStatsResponseActionListener);
-                }
+                new ActionListener<NodesInfoResponse>() {
+                    @Override
+                    public void onResponse(NodesInfoResponse nodesInfoResponse) {
+                        localNodesInfoResponse = nodesInfoResponse;
+                        client.admin().cluster().nodesStats(nodesStatsRequest, nodesStatsResponseActionListener);
+                    }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Nodes info request failed for local node", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Nodes info request failed for local node", e));
+                    }
+                };
 
         private final ActionListener<ClusterHealthResponse> clusterHealthResponseActionListener =
-            new ActionListener<ClusterHealthResponse>() {
-                @Override
-                public void onResponse(ClusterHealthResponse response) {
-                    clusterHealthResponse = response;
-                    client.admin().cluster().nodesInfo(localNodesInfoRequest, localNodesInfoResponseActionListener);
-                }
+                new ActionListener<ClusterHealthResponse>() {
+                    @Override
+                    public void onResponse(ClusterHealthResponse response) {
+                        clusterHealthResponse = response;
+                        client.admin().cluster().remoteStoreStats(remoteStoreStatsRequest, remoteStoreStatsResponseActionListener);
+                    }
 
-                @Override
-                public void onFailure(Exception e) {
-                    listener.onFailure(new OpenSearchException("Cluster health request failed", e));
-                }
-            };
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(new OpenSearchException("Cluster health request failed", e));
+                    }
+                };
+
+        private final ActionListener<RemoteStoreStatsResponse> remoteStoreStatsResponseActionListener =
+                new ActionListener<RemoteStoreStatsResponse>() {
+                    @Override
+                    public void onResponse(RemoteStoreStatsResponse response) {
+                        remoteStoreStatsResponse = response;
+                        client.admin().indices().segmentReplicationStats(segmentReplicationStatsRequest, segmentReplicationStatsResponseActionListener);
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        logger.error("Failed while getting remote store stats", e);
+                        listener.onFailure(new OpenSearchException("Failed while getting remote store stats", e));
+                    }
+                };
+
+        private final ActionListener<SegmentReplicationStatsResponse> segmentReplicationStatsResponseActionListener =
+                new ActionListener<SegmentReplicationStatsResponse>() {
+                    @Override
+                    public void onResponse(SegmentReplicationStatsResponse response) {
+                        segmentReplicationStatsResponse = response;
+                        client.admin().cluster().nodesInfo(localNodesInfoRequest, localNodesInfoResponseActionListener);
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        logger.error("Failed while getting segment replication stats", e);
+                        listener.onFailure(new OpenSearchException("Failed while getting segment replication stats", e));
+                    }
+                };
 
         private void start() {
             client.admin().cluster().health(healthRequest, clusterHealthResponseActionListener);
@@ -231,13 +282,15 @@ public class TransportNodePrometheusMetricsAction extends HandledTransportAction
                                                               NodesInfoResponse localNodesInfoResponse,
                                                               NodesStatsResponse nodesStats,
                                                               @Nullable IndicesStatsResponse indicesStats,
-                                                              @Nullable ClusterStateResponse clusterStateResponse) {
+                                                              @Nullable ClusterStateResponse clusterStateResponse,
+                                                              RemoteStoreStatsResponse remoteStoreStats,
+                                                              SegmentReplicationStatsResponse segmentReplicationStats) {
             NodePrometheusMetricsResponse response = new NodePrometheusMetricsResponse(
                     clusterHealth,
                     localNodesInfoResponse,
                     nodesStats.getNodes().toArray(new NodeStats[0]),
                     indicesStats, clusterStateResponse,
-                    settings, clusterSettings);
+                    settings, clusterSettings, remoteStoreStats, segmentReplicationStats);
             if (logger.isTraceEnabled()) {
                 logger.trace("Return response: [{}]", response);
             }

@@ -20,7 +20,9 @@ package org.opensearch.action;
 import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.opensearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.opensearch.action.admin.cluster.node.stats.NodeStats;
+import org.opensearch.action.admin.cluster.remotestore.stats.RemoteStoreStatsResponse;
 import org.opensearch.action.admin.cluster.state.ClusterStateResponse;
+import org.opensearch.action.admin.indices.replication.SegmentReplicationStatsResponse;
 import org.opensearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.opensearch.action.admin.indices.stats.PackageAccessHelper;
 import org.opensearch.common.Nullable;
@@ -40,11 +42,15 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
     private final ClusterHealthResponse clusterHealth;
     private final NodesInfoResponse nodesInfoResponse;
     private final NodeStats[] nodeStats;
-    @Nullable private final IndicesStatsResponse indicesStats;
+    @Nullable
+    private final IndicesStatsResponse indicesStats;
     private ClusterStatsData clusterStatsData = null;
+    private RemoteStoreStatsResponse remoteStoreStats;
+    private SegmentReplicationStatsResponse segmentReplicationStats;
 
     /**
      * A constructor that materialize the instance from inputStream.
+     *
      * @param in inputStream
      * @throws IOException if there is an exception reading from inputStream
      */
@@ -55,17 +61,20 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
         nodeStats = in.readArray(NodeStats::new, NodeStats[]::new);
         indicesStats = PackageAccessHelper.createIndicesStatsResponse(in);
         clusterStatsData = new ClusterStatsData(in);
+        remoteStoreStats = new RemoteStoreStatsResponse(in);
+        segmentReplicationStats = new SegmentReplicationStatsResponse(in);
     }
 
     /**
      * A constructor.
-     * @param clusterHealth ClusterHealthResponse
+     *
+     * @param clusterHealth          ClusterHealthResponse
      * @param localNodesInfoResponse NodesInfoResponse
-     * @param nodesStats NodesStats
-     * @param indicesStats IndicesStats
-     * @param clusterStateResponse ClusterStateResponse
-     * @param settings Settings
-     * @param clusterSettings ClusterSettings
+     * @param nodesStats             NodesStats
+     * @param indicesStats           IndicesStats
+     * @param clusterStateResponse   ClusterStateResponse
+     * @param settings               Settings
+     * @param clusterSettings        ClusterSettings
      */
     public NodePrometheusMetricsResponse(ClusterHealthResponse clusterHealth,
                                          NodesInfoResponse localNodesInfoResponse,
@@ -73,7 +82,9 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
                                          @Nullable IndicesStatsResponse indicesStats,
                                          @Nullable ClusterStateResponse clusterStateResponse,
                                          Settings settings,
-                                         ClusterSettings clusterSettings) {
+                                         ClusterSettings clusterSettings,
+                                         RemoteStoreStatsResponse remoteStoreStats,
+                                         SegmentReplicationStatsResponse segmentReplicationStats) {
         this.clusterHealth = clusterHealth;
         this.nodesInfoResponse = localNodesInfoResponse;
         this.nodeStats = nodesStats;
@@ -81,10 +92,13 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
         if (clusterStateResponse != null) {
             this.clusterStatsData = new ClusterStatsData(clusterStateResponse, settings, clusterSettings);
         }
+        this.remoteStoreStats = remoteStoreStats;
+        this.segmentReplicationStats = segmentReplicationStats;
     }
 
     /**
      * Get internal {@link ClusterHealthResponse} object.
+     *
      * @return ClusterHealthResponse object
      */
     public ClusterHealthResponse getClusterHealth() {
@@ -93,12 +107,16 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
 
     /**
      * Get internal {@link NodesInfoResponse} object.
+     *
      * @return NodesInfoResponse object
      */
-    public NodesInfoResponse getLocalNodesInfoResponse() { return this.nodesInfoResponse; }
+    public NodesInfoResponse getLocalNodesInfoResponse() {
+        return this.nodesInfoResponse;
+    }
 
     /**
      * Get internal {@link NodeStats} array.
+     *
      * @return NodeStats array
      */
     public NodeStats[] getNodeStats() {
@@ -107,6 +125,7 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
 
     /**
      * Get internal {@link IndicesStatsResponse} object.
+     *
      * @return IndicesStatsResponse object
      */
     @Nullable
@@ -116,11 +135,20 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
 
     /**
      * Get internal {@link ClusterStatsData} object.
+     *
      * @return ClusterStatsData object
      */
     @Nullable
     public ClusterStatsData getClusterStatsData() {
         return this.clusterStatsData;
+    }
+
+    public RemoteStoreStatsResponse getRemoteStoreStats() {
+        return remoteStoreStats;
+    }
+
+    public SegmentReplicationStatsResponse getSegmentReplicationStats() {
+        return segmentReplicationStats;
     }
 
     @Override
@@ -130,5 +158,7 @@ public class NodePrometheusMetricsResponse extends ActionResponse {
         out.writeArray(nodeStats);
         out.writeOptionalWriteable(indicesStats);
         clusterStatsData.writeTo(out);
+        remoteStoreStats.writeTo(out);
+        segmentReplicationStats.writeTo(out);
     }
 }
